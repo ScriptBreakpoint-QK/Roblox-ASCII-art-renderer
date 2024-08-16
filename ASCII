@@ -1,0 +1,99 @@
+local textLabel = script.Parent:WaitForChild("TEXT")
+local player = game.Players.LocalPlayer
+local camera = workspace.CurrentCamera
+local runService = game:GetService("RunService")
+local asciiChars = {"@", "#", "W", "&", "8", "O", "*", "=", ":", "-", ".", "`"}
+
+local playerAsciiChar = "<font color='rgb(255,0,0)'>#</font>"
+local otherPlayerAsciiChar = "<font color='rgb(0,0,255)'>?!</font>"
+local baseplateAsciiChar = "<font color='rgb(255,255,255)'>#</font>"
+local doorAsciiChar = "<font color='rgb(255,165,0)'>##</font>"
+
+local firstPersonThreshold = 1.5
+
+local function calculateResolution()
+	local viewportSize = camera.ViewportSize
+	local aspectRatio = viewportSize.X / viewportSize.Y
+	local baseHeight = 30
+	local width = math.floor(baseHeight * aspectRatio * 1)
+	return Vector2.new(width, baseHeight)
+end
+
+local function isPlayerPart(part)
+	return part:IsDescendantOf(player.Character)
+end
+
+local function isOtherPlayerPart(part)
+	for _, otherPlayer in pairs(game.Players:GetPlayers()) do
+		if otherPlayer ~= player and part:IsDescendantOf(otherPlayer.Character) then
+			return true
+		end
+	end
+	return false
+end
+
+local function isBaseplate(part)
+	return part.Name:lower() == "baseplate"
+end
+
+local function isDoor(part)
+	return part.Name:lower() == "door"
+end
+
+local function getAsciiForDistance(distance, maxDistance)
+	local brightnessFactor = distance / maxDistance
+	local index = math.floor(brightnessFactor * (#asciiChars - 1)) + 1
+	index = math.clamp(index, 1, #asciiChars)
+	return asciiChars[index]
+end
+
+local function renderSceneInASCII()
+	local asciiArt = {}
+	local resolution = calculateResolution()
+	local maxDistance = 200
+	local cameraToHeadDistance = (camera.CFrame.Position - player.Character:WaitForChild("Head").Position).Magnitude
+
+	for y = 1, resolution.Y do
+		asciiArt[y] = {}
+		for x = 1, resolution.X do
+			asciiArt[y][x] = " "
+		end
+	end
+
+	for y = 1, resolution.Y do
+		for x = 1, resolution.X do
+			local screenPoint = Vector3.new(x / resolution.X, y / resolution.Y, 1)
+			local ray = camera:ScreenPointToRay(screenPoint.X * camera.ViewportSize.X, screenPoint.Y * camera.ViewportSize.Y)
+			local raycastResult = workspace:Raycast(ray.Origin, ray.Direction * maxDistance)
+
+			if raycastResult then
+				local part = raycastResult.Instance
+				local distance = (raycastResult.Position - camera.CFrame.Position).Magnitude
+
+				if isOtherPlayerPart(part) then
+					asciiArt[y][x] = otherPlayerAsciiChar
+				elseif isBaseplate(part) then
+					asciiArt[y][x] = baseplateAsciiChar
+				elseif isDoor(part) then
+					asciiArt[y][x] = doorAsciiChar
+				elseif cameraToHeadDistance > firstPersonThreshold and isPlayerPart(part) then
+					asciiArt[y][x] = playerAsciiChar
+				else
+					asciiArt[y][x] = getAsciiForDistance(distance, maxDistance)
+				end
+			end
+		end
+	end
+
+	for y = 1, resolution.Y do
+		asciiArt[y] = table.concat(asciiArt[y])
+	end
+
+	textLabel.RichText = true
+	textLabel.Text = table.concat(asciiArt, "\n")
+	textLabel.TextScaled = false
+	textLabel.TextWrapped = false
+	textLabel.Parent.Enabled = true
+end
+
+runService.RenderStepped:Connect(renderSceneInASCII)
